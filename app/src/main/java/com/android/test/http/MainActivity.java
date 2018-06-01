@@ -1,5 +1,7 @@
 package com.android.test.http;
 
+import com.android.test.http.retrofit.CacheRetrofit;
+
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -13,12 +15,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private static final String TAG = "Github";
 
-    private Button mBtnRetrofit, mBtnMockRetrofit;
+    private Button mBtnRetrofit, mBtnMockRetrofit, mBtnCacheRetrofit;
     private Handler mHandler;
     private Looper mLooper;
 
     private GithubService mGithubService;
     private MockGithubService mMockGithubService;
+    private CacheGithubService mCacheGithubService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,8 +39,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mBtnMockRetrofit = (Button) findViewById(R.id.id_btn_mock_retrofit);
         mBtnMockRetrofit.setOnClickListener(this);
 
+        mBtnCacheRetrofit = (Button) findViewById(R.id.id_btn_cache_retrofit);
+        mBtnCacheRetrofit.setOnClickListener(this);
+
         mGithubService = new GithubService();
         mMockGithubService = new MockGithubService();
+        mCacheGithubService = new CacheGithubService();
     }
 
     @Override
@@ -61,6 +68,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         mMockGithubService.mockContributors();
                     } catch (Exception e) {
                         Log.i(TAG, "mockContributors()", e);
+                    }
+                }
+            });
+        } else if (v == mBtnCacheRetrofit) {
+            mHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        mCacheGithubService.cacheContributors();
+                    } catch (Exception e) {
+                        Log.i(TAG, "test()", e);
                     }
                 }
             });

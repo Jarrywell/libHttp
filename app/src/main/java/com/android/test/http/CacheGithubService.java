@@ -1,5 +1,8 @@
 package com.android.test.http;
 
+import com.android.test.http.retrofit.CacheDelegate;
+import com.android.test.http.retrofit.CacheRetrofit;
+
 import android.util.Log;
 
 import java.io.IOException;
@@ -11,28 +14,25 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
-import retrofit2.mock.BehaviorDelegate;
-import retrofit2.mock.MockRetrofit;
-import retrofit2.mock.NetworkBehavior;
 
 import static com.android.test.http.GithubInterfaces.API_URL;
 
 /**
  * des:
  * author: libingyan
- * Date: 18-5-31 20:35
+ * Date: 18-6-1 15:13
  */
-public class MockGithubService {
-
+public class CacheGithubService {
     private static final String TAG = "Github";
 
-    private MockGithubInterfaces mMockGithubInterfaces;
+    private CacheGithubInterfaces mCacheGithubInterfaces;
     private GithubInterfaces mGithubInterfaces;
-    private NetworkBehavior mNetworkBehavior;
 
-    public MockGithubService() {
+    public CacheGithubService() {
 
         Retrofit retrofit = new Retrofit.Builder()
             .baseUrl(API_URL)
@@ -41,56 +41,55 @@ public class MockGithubService {
 
         mGithubInterfaces = retrofit.create(GithubInterfaces.class);
 
-        mNetworkBehavior = NetworkBehavior.create();
-        MockRetrofit mockRetrofit = new MockRetrofit.Builder(retrofit)
-            .networkBehavior(mNetworkBehavior)
-            .build();
+        CacheRetrofit cacheRetrofit = new CacheRetrofit.Builder(retrofit).build();
 
-        BehaviorDelegate<GithubInterfaces> delegate = mockRetrofit.create(GithubInterfaces.class);
-        mMockGithubInterfaces = new MockGithubInterfaces(delegate, true);
+        CacheDelegate<GithubInterfaces> delegate = cacheRetrofit.create(GithubInterfaces.class);
+        mCacheGithubInterfaces = new CacheGithubInterfaces(delegate);
     }
 
-    public void mockContributors() throws IOException {
-        printContributors(mMockGithubInterfaces, "square", "retrofit");
-        printContributors(mMockGithubInterfaces, "square", "picasso");
+    public void cacheContributors() throws IOException {
+        printContributors(mCacheGithubInterfaces, "square", "retrofit");
+        printContributors(mCacheGithubInterfaces, "square", "picasso");
 
         Log.i(TAG, "\"Adding more mock data...");
-        mMockGithubInterfaces.addContributor("square", "retrofit", "Foo Bar", 61);
-        mMockGithubInterfaces.addContributor("square", "picasso", "Kit Kat", 53);
+        mCacheGithubInterfaces.addContributor("square", "retrofit", "Foo Bar", 61);
+        mCacheGithubInterfaces.addContributor("square", "picasso", "Kit Kat", 53);
 
-
-        // Reduce the delay to make the next calls complete faster.
-        mNetworkBehavior.setDelay(500, TimeUnit.MILLISECONDS);
 
         // Query for the contributors again so we can see the mock data that was added.
-        printContributors(mMockGithubInterfaces, "square", "retrofit");
-        printContributors(mMockGithubInterfaces, "square", "picasso");
+        printContributors(mCacheGithubInterfaces, "square", "retrofit");
+        printContributors(mCacheGithubInterfaces, "square", "picasso");
     }
 
-    private static void printContributors(GithubInterfaces gitHub, String owner, String repo)
+    private void printContributors(GithubInterfaces gitHub, final String owner, final String repo)
         throws IOException {
-        Log.d(TAG, String.format("== Contributors for %s/%s ==", owner, repo));
         Call<List<Contributor>> contributors = gitHub.contributors(owner, repo);
-        for (Contributor contributor : contributors.execute().body()) {
-            Log.i(TAG, contributor.login + " (" + contributor.contributions + ")");
-        }
+        contributors.enqueue(new Callback<List<Contributor>>() {
+            @Override
+            public void onResponse(Call<List<Contributor>> call,
+                Response<List<Contributor>> response) {
+                Log.d(TAG, String.format("== Contributors for %s/%s ==", owner, repo));
+                for (Contributor contributor : response.body()) {
+                    Log.i(TAG, "cache: " + contributor.login + " (" + contributor.contributions + ")");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<List<Contributor>> call, Throwable t) {
+
+            }
+        });
+
     }
 
 
-    final class MockGithubInterfaces implements GithubInterfaces {
+    final class CacheGithubInterfaces implements GithubInterfaces {
 
-        /**
-         * 增加开关区分是否适配假数据
-         */
-        private boolean mock;
-
-
-        private final BehaviorDelegate<GithubInterfaces> delegate;
+        private final CacheDelegate<GithubInterfaces> delegate;
         private final Map<String, Map<String, List<Contributor>>> ownerRepoContributors;
 
-        MockGithubInterfaces(BehaviorDelegate<GithubInterfaces> delegate, boolean mock) {
+        public CacheGithubInterfaces(CacheDelegate<GithubInterfaces> delegate) {
             this.delegate = delegate;
-            this.mock = mock;
             this.ownerRepoContributors = new LinkedHashMap<>();
 
             // Seed some mock data.
@@ -102,7 +101,6 @@ public class MockGithubService {
 
         }
 
-
         @Override
         public Call<List<Contributor>> contributors(String owner, String repo) {
             List<Contributor> response = Collections.emptyList();
@@ -113,7 +111,10 @@ public class MockGithubService {
                     response = contributors;
                 }
             }
-            if (mock) {
+            /**
+             * 判断缓存是否存在，如果没有缓存则发起网络请求
+             */
+            if (response != null && response.size() > 0) {
                 return delegate.returningResponse(response).contributors(owner, repo);
             } else {
                 return mGithubInterfaces.contributors(owner, repo);
